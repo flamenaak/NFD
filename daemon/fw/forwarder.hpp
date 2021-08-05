@@ -236,6 +236,15 @@ private:
 
   // allow Strategy (base class) to enter pipelines
   friend class fw::Strategy;
+
+private:
+  bool m_caAggregation;
+  bool m_carAggregation;
+  vector<Interest> m_caVec;
+  vector<Interest> m_carVec;
+  uint32_t m_blsAppIndex;
+
+  void aggregateInterests(vector<Interest> interests);
 };
 
 inline const ForwarderCounters&
