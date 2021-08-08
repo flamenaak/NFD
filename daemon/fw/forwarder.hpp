@@ -36,6 +36,7 @@
 #include "table/measurements.hpp"
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
+#include "ns3/FilterStore.hpp"
 
 #include "ns3/ndnSIM/model/cs/ndn-content-store.hpp"
 
@@ -243,6 +244,9 @@ private:
   vector<Interest> m_caVec;
   vector<Interest> m_carVec;
   uint32_t m_blsAppIndex;
+
+  ns3::FilterStore m_carStore;
+  ns3::FilterStore m_caStore;
 
   void aggregateInterests(vector<Interest> interests);
 };
