@@ -248,7 +248,13 @@ private:
   ns3::FilterStore m_carStore;
   ns3::FilterStore m_caStore;
 
-  void aggregateInterests(vector<Interest> interests);
+  vector<std::pair<int, Interest>> m_caBuffer;
+  vector<std::pair<int, Interest>> m_carBuffer;
+
+public:
+  void aggregateCA();
+  void aggregateCAR();
+
 };
 
 inline const ForwarderCounters&
