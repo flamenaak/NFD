@@ -241,6 +241,9 @@ private:
 private:
   bool m_caAggregation;
   bool m_carAggregation;
+  bool m_carProtected;
+  bool m_caProtected;
+
   vector<Interest> m_caVec;
   vector<Interest> m_carVec;
   uint32_t m_blsAppIndex;
