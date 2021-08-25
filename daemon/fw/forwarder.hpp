@@ -234,6 +234,9 @@ private:
   ns3::Ptr<ns3::ndn::ContentStore> m_csFromNdnSim;
 
   static const Name LOCALHOST_NAME;
+  const long AGG_TIMER = 350;
+  string folderName = "experiments_350_25";
+
 
   // allow Strategy (base class) to enter pipelines
   friend class fw::Strategy;

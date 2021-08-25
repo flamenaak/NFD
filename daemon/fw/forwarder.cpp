@@ -93,11 +93,38 @@ namespace nfd
       if (!verified)
       {
         NS_LOG_UNCOND("Could not verify a message: " << interest.getName().toUri());
-        // const_cast<Interest &>(interest).logDebug();
-        for (size_t i =0; i < const_cast<Interest &>(interest).getBloomFilters().size(); i++){
-          
+        const_cast<Interest &>(interest).logDebugContent();
+        string typeString = const_cast<Interest&>(interest).getTypeString();
+        size_t bfCount = const_cast<Interest&>(interest).getBloomFilters().size();
+        size_t reductionCount = 0;
+        for (size_t i = 0; i < bfCount; i++) {
+          reductionCount += const_cast<Interest&>(interest).getBloomFilters()[i]->getReductions().size();
         }
-        return;
+
+        ofstream roundtripFile;
+        roundtripFile.open("/home/vlado/"+ folderName +"/unverified-" + name + ".csv", ios::out | ios::app);
+        roundtripFile << interest.getName().toUri() << "," << typeString << "," << interest.wireEncode().size() << "," << bfCount << "," << reductionCount << "\n";
+        roundtripFile.close();
+        //return;
+      }
+
+      if ((interest.getInterestType() == Interest::CA && app->getNodeType() == BlsNodeType::CLIENT)
+      || (interest.getInterestType() == Interest::CAR && app->getNodeType() == BlsNodeType::SERVER)
+      || app->getNodeType() == BlsNodeType::ROUTER){
+        string typeString = const_cast<Interest&>(interest).getTypeString();
+        size_t bfCount = const_cast<Interest&>(interest).getBloomFilters().size();
+        size_t reductionCount = 0;
+        size_t overhead = 96;
+        for (size_t i = 0; i < bfCount; i++) {
+          reductionCount += const_cast<Interest&>(interest).getBloomFilters()[i]->getReductions().size();
+          overhead += const_cast<Interest&>(interest).getBloomFilters()[i]->getByteSize();
+        }
+
+        ofstream roundtripFile;
+        size_t totalSize = interest.wireEncode().size();
+        roundtripFile.open("/home/vlado/"+ folderName +"/interests-" + name + ".csv", ios::out | ios::app);
+        roundtripFile << interest.getName().toUri() << "," << typeString << "," << totalSize << "," << overhead << "," << bfCount << "," << reductionCount << "," << totalSize/(bfCount + reductionCount) << "\n";
+        roundtripFile.close();
       }
     }
 
@@ -117,6 +144,7 @@ namespace nfd
         {
           if (fibEntry == NULL)
           {
+            app->getTimeMap()->insert(make_pair(interest.getName().toUri(), ns3::Simulator::Now().GetMilliSeconds()));
             // NS_LOG_UNCOND("local content interest for " << interest.getName().getSubName(1, 1) << " on " << name);
             shared_ptr<pit::Entry> pitEntry = m_pit.insert(interest).first;
             shared_ptr<Interest> carInterest = make_shared<Interest>(interest);
@@ -135,7 +163,7 @@ namespace nfd
             P1 signature = s->sign(container);
             carInterest->addBloomFilter(container);
             carInterest->setSignature(new P1_Affine(signature));
-            carInterest->addSigner(new SidPkPair(app->getId(), s->getPublicKey()));
+            // carInterest->addSigner(new SidPkPair(app->getId(), s->getPublicKey()));
 
             shared_ptr<Name> nameWithSequence = make_shared<Name>("/CAR");
             //nameWithSequence->append(interest.getName().getSubName(1, interest.getName().size() - 1).toUri());
@@ -145,13 +173,13 @@ namespace nfd
             for (auto it = getFaceTable().begin(); it != getFaceTable().end(); it++) {
               if (it->get()->getId() != inFace.getId() && !it->get()->isLocal()) {
                 it->get()->sendInterest(*carInterest);
-                NS_LOG_UNCOND("Client sending interest " << carInterest->getName().toUri());
+                //NS_LOG_UNCOND("Client sending interest " << carInterest->getName().toUri());
               }
             }
             return;
           }
           else {
-            NS_LOG_UNCOND(" THIS INTEREST IS ALREADY IN THE FIB!!");
+            NS_LOG_UNCOND("THIS INTEREST IS ALREADY IN THE FIB!! " << interest.getName().toUri());
             fibEntry.get()->getNextHops().begin()->getFace()->sendInterest(interest);
           }
         }
@@ -165,7 +193,7 @@ namespace nfd
         }
       } // inFace.isLocal()
       else {
-        NS_LOG_UNCOND("Client got a non-local interest " << interest.getName().toUri());
+        // NS_LOG_UNCOND("Client got a non-local interest " << interest.getName().toUri());
         if (interest.getInterestType() == Interest::CA)
         {
           vector<BloomFilterContainer*> advertisedBfs = const_cast<Interest &>(interest).getAllBloomFilters();
@@ -228,7 +256,7 @@ namespace nfd
       if (inFace.isLocal())
       {
         // worry about this later
-        NS_LOG_UNCOND("server " << name << " received an interest from local face " << interest.getName().toUri());
+        // NS_LOG_UNCOND("server " << name << " received an interest from local face " << interest.getName().toUri());
       }
       else
       {
@@ -262,30 +290,30 @@ namespace nfd
           {
             // bfs[i]->printFilter();
             BloomFilterContainer *current = bfs[i];
-            for (size_t j = i; j < bfs.size(); j++)
-            {
-              if (i == j)
-                continue;
-              // break the loop if union would exceed inserted element count
-              if (current->getBloomFilter()->inserted_element_count_ + bfs[j]->getBloomFilter()->inserted_element_count_ > BF_N)
-                break;
-              // continue loop if the union is not useful
-              if ((*(current->getBloomFilter()) | *(bfs[j]->getBloomFilter())) == *(current->getBloomFilter()))
-              { // union does not add anything new
-                i++;
-                continue;
-              }
-              if ((*(current->getBloomFilter()) & *(bfs[j]->getBloomFilter())) == *(current->getBloomFilter()))
-              { // current is a subset of bfs[j]
-                swap(current, bfs[j]);
-                i++;
-                continue;
-              }
-              // do union
-              current->getBloomFilter()->operator|=(*(bfs[j]->getBloomFilter()));
-              current->getBloomFilter()->inserted_element_count_ += bfs[j]->getBloomFilter()->inserted_element_count_;
-              i++;
-            }
+            // for (size_t j = i; j < bfs.size(); j++)
+            // {
+            //   if (i == j)
+            //     continue;
+            //   // break the loop if union would exceed inserted element count
+            //   if (current->getBloomFilter()->inserted_element_count_ + bfs[j]->getBloomFilter()->inserted_element_count_ > BF_N)
+            //     break;
+            //   // continue loop if the union is not useful
+            //   if ((*(current->getBloomFilter()) | *(bfs[j]->getBloomFilter())) == *(current->getBloomFilter()))
+            //   { // union does not add anything new
+            //     i++;
+            //     continue;
+            //   }
+            //   if ((*(current->getBloomFilter()) & *(bfs[j]->getBloomFilter())) == *(current->getBloomFilter()))
+            //   { // current is a subset of bfs[j]
+            //     swap(current, bfs[j]);
+            //     i++;
+            //     continue;
+            //   }
+            //   // do union
+            //   // current->getBloomFilter()->operator|=(*(bfs[j]->getBloomFilter()));
+            //   // current->getBloomFilter()->inserted_element_count_ += bfs[j]->getBloomFilter()->inserted_element_count_;
+            //   i++;
+            // }  
             toBeAdvertised.push_back(current);
           }
           // NS_LOG_UNCOND("tobe advertised size " << toBeAdvertised.size());
@@ -308,7 +336,7 @@ namespace nfd
               }
               if (bfContainsName)
               {
-                NS_LOG_UNCOND(name << " name advertising: " << it->getPrefix().toUri() << "\n for interest " << interest.getName().toUri());
+                NS_LOG_UNCOND(name << " advertising: " << it->getPrefix().toUri() << "\n for interest " << interest.getName().toUri());
                 advertisedNames.push_back(it->getPrefix());
                 sendCA = true;
                 continue;
@@ -328,7 +356,7 @@ namespace nfd
               signature.aggregate(s->sign(container));
               caInterest->mergeBf(container);
             }
-            caInterest->addSigner(new SidPkPair(app->getId(), s->getPublicKey()));
+            // caInterest->addSigner(new SidPkPair(app->getId(), s->getPublicKey()));
             caInterest->setSignature(new P1_Affine(signature));
             inFace.sendInterest(*caInterest);
             //TODO: should probably implement destructor of Interest that deletes all the pointers
@@ -340,13 +368,13 @@ namespace nfd
           // NS_LOG_UNCOND("server node received 'content' Interest");
           shared_ptr<fib::Entry> fibEntry = m_fib.findExactMatch(interest.getName().getSubName(0, interest.getName().size() - 1));
           if (static_cast<bool>(fibEntry)) {
-            NS_LOG_UNCOND("found the entry in the FIB of server, sending data for " << interest.getName().toUri());
+            // NS_LOG_UNCOND("found the entry in the FIB of server, sending data for " << interest.getName().toUri());
 
             shared_ptr<Data> data = make_shared<Data>();
             data->setName(interest.getName());
             // copied from the producer
             data->setFreshnessPeriod(::ndn::time::milliseconds(0));
-            data->setContent(make_shared< ::ndn::Buffer>(1024));
+            data->setContent(make_shared< ::ndn::Buffer>(8));
             ndn::Signature signature;
             ndn::SignatureInfo signatureInfo(static_cast< ::ndn::tlv::SignatureTypeValue>(255));
             signature.setInfo(signatureInfo);
@@ -354,12 +382,12 @@ namespace nfd
             data->setSignature(signature);
             data->wireEncode();
 
-            NS_LOG_UNCOND("Sending data " << data->getName().toUri() << " for face " << inFace.getId());
+            NS_LOG_UNCOND(name << " Sending data " << data->getName().toUri() << " for face " << inFace.getId());
 
             inFace.sendData(*data);
             ++m_counters.getNOutDatas();
           } else {
-            NS_LOG_UNCOND("no FIB entry for " << interest.getName().getSubName(0, interest.getName().size() - 1));
+            // NS_LOG_UNCOND("no FIB entry for " << interest.getName().getSubName(0, interest.getName().size() - 1));
           }
           return;
         }
@@ -376,7 +404,7 @@ namespace nfd
         shared_ptr<Interest> interestPtr = make_shared<Interest>(interest);
         vector<BloomFilterContainer*> interestBfs = interestPtr->getAllBloomFilters();
 
-        NS_LOG_UNCOND("router " << name << " received a CAR interest: " << interest.getName().toUri() << " with BF count " << interestBfs.size());
+        // NS_LOG_UNCOND("router " << name << " received a CAR interest: " << interest.getName().toUri() << " with BF count " << interestBfs.size());
         // if (isRouter1)
         //   NS_LOG_UNCOND("got a CAR on router with BF count " << interestBfs.size());
         for(size_t i= 0; i < interestBfs.size(); i++)
@@ -392,14 +420,14 @@ namespace nfd
           if (it->get()->getId()!= inFace.getId() && !it->get()->isLocal()) {
             m_carBuffer.push_back(std::pair<int, Interest>(it->get()->getId(), *interestPtr));
             // it->get()->sendInterest(*interestPtr);
-            NS_LOG_UNCOND(name << " Adding interest to buffer " << interestPtr->getName().toUri() << " with face " << it->get()->getId());
+            // NS_LOG_UNCOND(name << " Adding interest to buffer " << interestPtr->getName().toUri() << " with face " << it->get()->getId());
           }
         }
         m_carProtected = false;
         if (!m_carAggregation) {
           // if (isRouter1)
           // NS_LOG_UNCOND(name << "Time at the scheduling " << ns3::Simulator::Now().GetMilliSeconds());
-          ns3::Simulator::Schedule(ns3::MilliSeconds(AGGREGATION_TIMER), &Forwarder::aggregateCAR, this);
+          ns3::Simulator::Schedule(ns3::MilliSeconds(AGG_TIMER), &Forwarder::aggregateCAR, this);
           m_carAggregation = true;
         } else {
           // if (isRouter1)
@@ -409,7 +437,7 @@ namespace nfd
       }
       else if (interest.getInterestType() == Interest::CA)
       {
-         NS_LOG_UNCOND(name << "received a CA interest: " << interest.getName().toUri());
+        // NS_LOG_UNCOND(name << "received a CA interest: " << interest.getName().toUri());
         vector<BloomFilterContainer*> interestBfs = const_cast<Interest &>(interest).getAllBloomFilters();
         list<int> outFaces;
         for(size_t i= 0; i < interestBfs.size(); i++)
@@ -426,14 +454,14 @@ namespace nfd
         // NS_LOG_UNCOND("collected faces: " << outFaces.size());
         // aggregate
         if (!m_caAggregation) {
-          ns3::Simulator::Schedule(ns3::MilliSeconds(AGGREGATION_TIMER), &Forwarder::aggregateCA, this);
+          ns3::Simulator::Schedule(ns3::MilliSeconds(AGG_TIMER), &Forwarder::aggregateCA, this);
           m_caAggregation = true;
         }
         while (m_caProtected){} // wait until aggregation is done
         m_caProtected = true;
         for (auto it = outFaces.begin(); it != outFaces.end(); ++it)
         {
-          NS_LOG_UNCOND( name << " forwarding CA " << interest.getName().toUri() << " to face with id: "<< *it);
+          // NS_LOG_UNCOND( name << " forwarding CA " << interest.getName().toUri() << " to face with id: "<< *it);
           // m_faceTable.get(outFaces[i])->sendInterest(interest);
           m_caBuffer.push_back(std::pair<int, Interest>(*it, const_cast<Interest &>(interest)));
         }
@@ -563,7 +591,7 @@ namespace nfd
               toBeSent.push_back(interest);
               interest = NULL;
             } else {
-              NS_LOG_UNCOND("Merging interest " << interest->getName() << " with " << m_caBuffer[i].second.getName());
+              //NS_LOG_UNCOND("Merging interest " << interest->getName() << " with " << m_caBuffer[i].second.getName());
               interest->merge(&(m_caBuffer[i].second));
             }
           }
@@ -576,7 +604,7 @@ namespace nfd
 
       for (size_t i = 0; i < toBeSent.size(); i++) {
         it->get()->sendInterest(*toBeSent[i]);
-        NS_LOG_UNCOND(name << " Forwardign interest " << toBeSent[i]->getName().toUri());
+        // NS_LOG_UNCOND(name << " Forwardign interest " << toBeSent[i]->getName().toUri());
       }
     }
 
@@ -595,7 +623,7 @@ namespace nfd
     while(m_carProtected){}
     m_carProtected = true;
     // if(isRouter1)
-    NS_LOG_UNCOND(name << " Time at the aggregation" << ns3::Simulator::Now().GetMilliSeconds() << " buffer size " << m_carBuffer.size());
+    // NS_LOG_UNCOND(name << " Time at the aggregation" << ns3::Simulator::Now().GetMilliSeconds() << " buffer size " << m_carBuffer.size());
     for (auto it = getFaceTable().begin(); it != getFaceTable().end(); it++) 
     {
       if (it->get()->isLocal()) {
@@ -617,7 +645,7 @@ namespace nfd
               interest->setName(*newName);
             }
             if (interest->estimateByteSize(false) + m_carBuffer[i].second.estimateByteSize(false) > 3000) { // keep the interest size under Mtu limit (1500)
-              NS_LOG_UNCOND("splitting aggregation");
+              // NS_LOG_UNCOND("splitting aggregation");
               toBeSent.push_back(interest);
               interest = NULL;
             } else {
@@ -633,7 +661,7 @@ namespace nfd
 
       for (size_t i = 0; i < toBeSent.size(); i++) {
         it->get()->sendInterest(*toBeSent[i]);
-        NS_LOG_UNCOND(name << " Forwardign interest " << toBeSent[i]->getName().toUri() << " to face " << it->get()->getId());
+        // NS_LOG_UNCOND(name << " Forwardign interest " << toBeSent[i]->getName().toUri() << " to face " << it->get()->getId());
       }
     }
     m_carBuffer.clear();
@@ -726,7 +754,7 @@ namespace nfd
   Forwarder::onOutgoingInterest(shared_ptr<pit::Entry> pitEntry, Face &outFace,
                                 bool wantNewNonce)
   {
-    NS_LOG_UNCOND("on outgoing interest");
+    // NS_LOG_UNCOND("on outgoing interest");
     if (outFace.getId() == INVALID_FACEID)
     {
       NFD_LOG_WARN("onOutgoingInterest face=invalid interest=" << pitEntry->getName());
@@ -830,11 +858,12 @@ namespace nfd
         }
         for (auto it = match.begin(); it != match.end(); it++)
         {
-          NS_LOG_UNCOND(name << " got some solicited data! " << data.getName().toUri());
+          // NS_LOG_UNCOND(name << " got some solicited data! " << data.getName().toUri());
           auto fibEntry = m_fib.insert(data.getName()).first;
           fibEntry.get()->addNextHop(inFace.shared_from_this(),1);
           int faceId = it->get()->getInterest().getIncomingFaceId();
           getFaceTable().get(faceId)->sendData(data);
+          it->get()->deleteInRecords();
         }
         return;
       }
@@ -849,6 +878,17 @@ namespace nfd
         for (auto it = match.begin(); it != match.end(); it++)
         {
           NS_LOG_UNCOND(name << " CLIENT got some solicited data! " << data.getName().toUri() << " for pit entry " << it->get()->getName().toUri());
+          int64_t start = app->getTimeMap()->operator[](data.getName().toUri());
+          app->getTimeMap()->erase(data.getName().toUri());
+          if (start != 0) {
+            int64_t total = ns3::Simulator::Now().GetMilliSeconds() - start;
+            // NS_LOG_UNCOND("roundtrip time to get the data: " << total);
+            ofstream roundtripFile;
+            roundtripFile.open("/home/vlado/"+ folderName +"/roundtrips-" + name + ".csv", ios::out | ios::app);
+            roundtripFile << data.getName().toUri() << "," << total << "\n";
+            roundtripFile.close();
+          }
+
           auto fibEntry = m_fib.insert(it->get()->getName()).first;
           fibEntry.get()->addNextHop(inFace.shared_from_this(),1);
         }
