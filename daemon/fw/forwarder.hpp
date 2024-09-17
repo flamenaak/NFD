@@ -36,6 +36,7 @@
 #include "table/measurements.hpp"
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
+#include "ns3/FilterStore.hpp"
 
 #include "ns3/ndnSIM/model/cs/ndn-content-store.hpp"
 
@@ -233,9 +234,33 @@ private:
   ns3::Ptr<ns3::ndn::ContentStore> m_csFromNdnSim;
 
   static const Name LOCALHOST_NAME;
+  const long AGG_TIMER = 350;
+  string folderName = "experiments_350_25";
+
 
   // allow Strategy (base class) to enter pipelines
   friend class fw::Strategy;
+
+private:
+  bool m_caAggregation;
+  bool m_carAggregation;
+  bool m_carProtected;
+  bool m_caProtected;
+
+  vector<Interest> m_caVec;
+  vector<Interest> m_carVec;
+  uint32_t m_blsAppIndex;
+
+  ns3::FilterStore m_carStore;
+  ns3::FilterStore m_caStore;
+
+  vector<std::pair<int, Interest>> m_caBuffer;
+  vector<std::pair<int, Interest>> m_carBuffer;
+
+public:
+  void aggregateCA();
+  void aggregateCAR();
+
 };
 
 inline const ForwarderCounters&
